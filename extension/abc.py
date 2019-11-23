@@ -147,6 +147,9 @@ class User(object):
         self._find_perms()
         self.highest_permission = self.permissions[0]
     
+    def __str__(self):
+        return self.name
+    
     @property
     def points(self):
         return self._points

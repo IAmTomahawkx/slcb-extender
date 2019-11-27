@@ -47,7 +47,7 @@ class Settings:
             self._applied = {}
             # no settings exist, use the defaults
             for name, sets in self._root.items():
-                if name == "output_file": continue
+                if name == "output_file" or sets['type']=="button": continue
                 self._applied[name] = sets['value']
         self.__dict__.update(self._applied)
         if not hasattr(self, "StreamlabsEventToken"):

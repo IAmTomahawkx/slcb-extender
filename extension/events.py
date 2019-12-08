@@ -77,26 +77,36 @@ class EventsNode:
             if evntdata.Type == "follow":
                 # Events can come in bulk so it is in a list, iterate over it.
                 for message in evntdata.Message:
-                    self._bot.dispatch("follow", message.Name)
+                    user = self._bot.get_user(message.Name)
+                    self._bot.dispatch("follow", user)
 
             # This is a Twitch cheer event
             elif evntdata.Type == "bits":
                 for message in evntdata.Message:
-                    self._bot.dispatch("bits", message.Message)
+                    user = self._bot.get_user(message.Name)
+                    self._bot.dispatch("cheer", user, message.Amount, message.Message)
 
             # This is a Twitch subscription event
             elif evntdata.Type == "subscription":
                 for message in evntdata.Message:
-                    if message.StreakMonths:  # Is a nullable int in .NET can check if it is not None
-                        self._bot.dispatch("streak_sub", message.Name, message.Months, message.StreakMonths)
+                    if message.Gifter:
+                        user = self._bot.get_user(message.Name)
+                        gifter = self._bot.get_user(message.Gifter)
+                        self._bot.dispatch("gift_sub", user, gifter)
+                    elif message.StreakMonths:  # Is a nullable int in .NET can check if it is not None
+                        user = self._bot.get_user(message.Name)
+                        self._bot.dispatch("streak_sub", user, message.Months, message.StreakMonths)
                     elif message.Months > 1:  # Reliable way to to detect resub, as SubType is can vary with testing/real but also can contain subgift value
-                        self._bot.dispatch("resub", message.Name, message.Months)
+                        user = self._bot.get_user(message.Name)
+                        self._bot.dispatch("resub", user, message.Months)
                     else:
-                        self._bot.dispatch("sub", message.Name)
+                        user = self._bot.get_user(message.Name)
+                        self._bot.dispatch("sub", user)
 
         elif evntdata and evntdata.For == "streamlabs":
             # This is a streamlabs donation event
             if evntdata.Type == "donation":
                 for message in evntdata.Message:
-                    self._bot.dispatch("donation", message.Name, message.FormattedAmount)
+                    user = self._bot.get_user(message.Name)
+                    self._bot.dispatch("donation", user, float(message.Amount), message.Currency)
         self._bot.dispatch("event_receive", sender, args.Data)

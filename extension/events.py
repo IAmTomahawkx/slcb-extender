@@ -25,24 +25,24 @@ DEALINGS IN THE SOFTWARE.
 
 Thanks to Ocgineer for his EventReciever.dll and boilerplate
 """
-from .bin.StreamlabsEventReciever import StreamlabsEventClient
+import clr, os
+clr.AddReferenceToFileAndPath(os.path.join(os.path.dirname(__file__), "bin", "StreamlabsEventReceiver.dll"))
+import StreamlabsEventReceiver
 import logging
 
 logger = logging.getLogger(__name__)
 
-class EventsNode:
+class EventsNode(object):
     def __init__(self, bot):
         self._bot = bot
 
-    def on_init(self, bot):
-        self.receiver = StreamlabsEventClient()
+    def on_init(self):
+        self.receiver = StreamlabsEventReceiver.StreamlabsEventClient()
         self.receiver.StreamlabsSocketConnected += self.on_event_connect
         self.receiver.StreamlabsSocketDisconnected += self.on_event_disconnect
         self.receiver.StreamlabsSocketEvent += self.on_event_receive
-        if bot.settings.StreamlabsEventToken:
-           self.receiver.Connect(bot.settings.StreamlabsEventToken)
-        bot.add_listener(self.on_reload_settings)
-        bot.add_listener(self.on_unload)
+        if self._bot.settings.StreamlabsEventToken:
+           self.receiver.Connect(self._bot.settings.StreamlabsEventToken)
 
     def on_unload(self):
         if self.receiver and self.receiver.IsConnected:
@@ -98,11 +98,11 @@ class EventsNode:
                         self._bot.dispatch("streak_sub", user, message.Months, message.StreakMonths)
                     elif message.Months > 1:  # Reliable way to to detect resub, as SubType is can vary with testing/real but also can contain subgift value
                         user = self._bot.get_user(message.Name)
-                        tier = message.SubPlan
+                        tier = int(message.SubPlan)/1000
                         self._bot.dispatch("resub", user, message.Months, tier)
                     else:
                         user = self._bot.get_user(message.Name)
-                        tier = message.SubPlan
+                        tier = int(message.SubPlan)/1000
                         self._bot.dispatch("sub", user, tier)
 
         elif evntdata and evntdata.For == "streamlabs":

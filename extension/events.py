@@ -39,7 +39,7 @@ class EventsNode:
         self.receiver.StreamlabsSocketConnected += self.on_event_connect
         self.receiver.StreamlabsSocketDisconnected += self.on_event_disconnect
         self.receiver.StreamlabsSocketEvent += self.on_event_receive
-        if bot.settings.StreamlabsEventToken is not None:
+        if bot.settings.StreamlabsEventToken:
            self.receiver.Connect(bot.settings.StreamlabsEventToken)
         bot.add_listener(self.on_reload_settings)
         bot.add_listener(self.on_unload)
@@ -98,10 +98,12 @@ class EventsNode:
                         self._bot.dispatch("streak_sub", user, message.Months, message.StreakMonths)
                     elif message.Months > 1:  # Reliable way to to detect resub, as SubType is can vary with testing/real but also can contain subgift value
                         user = self._bot.get_user(message.Name)
-                        self._bot.dispatch("resub", user, message.Months)
+                        tier = message.SubPlan
+                        self._bot.dispatch("resub", user, message.Months, tier)
                     else:
                         user = self._bot.get_user(message.Name)
-                        self._bot.dispatch("sub", user)
+                        tier = message.SubPlan
+                        self._bot.dispatch("sub", user, tier)
 
         elif evntdata and evntdata.For == "streamlabs":
             # This is a streamlabs donation event

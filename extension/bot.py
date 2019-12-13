@@ -35,6 +35,7 @@ from .message import Message
 from .tree import *
 from .commands import *
 from .settings import Settings
+from .events import EventsNode
 import collections
 import logging
 import json
@@ -49,13 +50,13 @@ scriptdir = os.path.dirname(os.path.dirname(__file__))
 reUserNotice = re.compile(r"(?:^(?:@(?P<irctags>[^\ ]*)\ )?:tmi\.twitch\.tv\ USERNOTICE)")
 logger = logging.getLogger(__name__)
 
-clr.AddReference("System.Windows.Forms")
-clr.AddReferenceByPartialName("PresentationFramework")
-clr.AddReferenceByPartialName("PresentationCore")
-clr.AddReferenceToFile('CefSharp.Wpf.dll')
-clr.AddReference('System.Threading')
-from System.Windows.Forms.MessageBox import Show
-msg = lambda obj: Show(str(obj))
+#clr.AddReference("System.Windows.Forms")
+#clr.AddReferenceByPartialName("PresentationFramework")
+#clr.AddReferenceByPartialName("PresentationCore")
+#clr.AddReferenceToFile('CefSharp.Wpf.dll')
+#clr.AddReference('System.Threading')
+#from System.Windows.Forms.MessageBox import Show
+#msg = lambda obj: Show(str(obj))
 
 class Bot(GroupMapping, BotBase):
     def __init__(self, prefix="!", push_data_errors=True, settings=Settings, **kwargs):
@@ -73,6 +74,7 @@ class Bot(GroupMapping, BotBase):
         self._do_parameters = kwargs.get("do_parameters", True)
         self.handle_errors = kwargs.get("handle_errors", True)
         self.settings = settings()
+        self.events = EventsNode(self)
 
         # i dont know the platform until the first data event comes through
         # so just set it to `None` for now
@@ -90,7 +92,7 @@ class Bot(GroupMapping, BotBase):
         self.stream = self.get_channel(Platforms.twitch) # this works, as all the streaming channels are the same.
         self.discord = self.get_channel(Platforms.discord)
         self._live_dt = None
-        self._bw = BrowserWindow(self)
+#        self._bw = BrowserWindow(self)
 
     def init(self):
         """
@@ -297,6 +299,12 @@ class Bot(GroupMapping, BotBase):
         for listener in self.__listeners:
             if listener.__flag == flag:
                 self._actual_dispatch(listener, *args, **kwargs)
+        if flag == "on_init":
+            self.events.on_init()
+        elif flag == "on_reload_settings":
+            self.events.on_reload_settings(*args)
+        elif flag == "on_unload":
+            self.events.on_unload()
 
     def _actual_dispatch(self, func, *args, **kwargs):
         try:
@@ -589,7 +597,6 @@ class BrowserWindow:
         self.form.Content = self.browser
         self.executors = []
         
-        self.
     def Show(self):
         self.form.Show()
     
@@ -613,7 +620,7 @@ class BrowserWindow:
 
     def run_efsharp_thread(self, runner):
         from System.Threading import Thread, ThreadStart, ApartmentState
-        thread = Thread(ThreadStart(your_function))
+        thread = Thread(ThreadStart(runner))
         thread.SetApartmentState(ApartmentState.STA)
         thread.Start()
         self.executors.append(thread)

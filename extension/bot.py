@@ -35,12 +35,11 @@ from .message import Message
 from .tree import *
 from .commands import *
 from .settings import Settings
-from .events import EventsNode
 import collections
 import logging
 import json
 import datetime
-import clr
+#import clr
 
 __all__ = [
     "Bot"
@@ -74,7 +73,6 @@ class Bot(GroupMapping, BotBase):
         self._do_parameters = kwargs.get("do_parameters", True)
         self.handle_errors = kwargs.get("handle_errors", True)
         self.settings = settings()
-        self.events = EventsNode(self)
 
         # i dont know the platform until the first data event comes through
         # so just set it to `None` for now
@@ -92,7 +90,7 @@ class Bot(GroupMapping, BotBase):
         self.stream = self.get_channel(Platforms.twitch) # this works, as all the streaming channels are the same.
         self.discord = self.get_channel(Platforms.discord)
         self._live_dt = None
-#        self._bw = BrowserWindow(self)
+        self._api = BrowserWindow(self)
 
     def init(self):
         """
@@ -299,12 +297,6 @@ class Bot(GroupMapping, BotBase):
         for listener in self.__listeners:
             if listener.__flag == flag:
                 self._actual_dispatch(listener, *args, **kwargs)
-        if flag == "on_init":
-            self.events.on_init()
-        elif flag == "on_reload_settings":
-            self.events.on_reload_settings(*args)
-        elif flag == "on_unload":
-            self.events.on_unload()
 
     def _actual_dispatch(self, func, *args, **kwargs):
         try:
@@ -588,40 +580,49 @@ class Bot(GroupMapping, BotBase):
 
 class BrowserWindow:
     def __init__(self, bot):
-        import System.Windows
-        from CefSharp.Wpf import ChromiumWebBrowser
-        self.form = System.Windows.Window()
-        c = bot.parent.GetType().Assembly.AnkhBotR2.Helpers.Com.TwitchChatCom
-        self.tcom = c(ChromiumWebBrowser())
-        self.browser = self.tcom.Browser
-        self.form.Content = self.browser
-        self.executors = []
+        self.bot = bot
+        self.ready = False
         
     def Show(self):
         self.form.Show()
+
+    def setup(self):
+        self.ready = True
+        import System.Windows
+        from CefSharp.Wpf import ChromiumWebBrowser
+        self.form = System.Windows.Window()
+        c = self.bot.parent.GetType().Assembly.AnkhBotR2.Helpers.Com.TwitchChatCom
+        self.tcom = c(ChromiumWebBrowser())
+        self.browser = self.tcom.Browser
+        self.form.Content = self.browser
+
+    def runfunc(self, func):
+        if not self.ready:
+            def coro():
+                self.setup()
+                func()
+            self.run_efsharp_thread(coro)
     
     def send_msg_as_caster(self, msg):
-        self.run_efsharp_thread(lambda: self.tcom.JSSendCommand(str(msg), ""))
-    
+        self.runfunc(lambda: self.tcom.JSSendCommand(str(msg), ""))
+
     def purge(self, user):
-        self.run_efsharp_thread(lambda: self.tcom.JSPurge(user.id))
+        self.runfunc(lambda: self.tcom.JSPurge(user.id))
     
     def editor(self, user):
-        self.run_efsharp_thread(lambda: self.tcom.JSEditor(user.id))
+        self.runfunc(lambda: self.tcom.JSEditor(user.id))
     
     def regular(self, user):
-        self.run_efsharp_thread(lambda: self.tcom.JSRegular(user.id))
+        self.runfunc(lambda: self.tcom.JSRegular(user.id))
     
     def ban(self, user):
-        self.run_efsharp_thread(lambda: self.tcom.JSBan(user.id))
+        self.runfunc(lambda: self.tcom.JSBan(user.id))
     
     def timeout(self, user):
-        self.run_efsharp_thread(lambda: self.tcom.JSTimeout(user.id))
+        self.runfunc(lambda: self.tcom.JSTimeout(user.id))
 
     def run_efsharp_thread(self, runner):
         from System.Threading import Thread, ThreadStart, ApartmentState
         thread = Thread(ThreadStart(runner))
         thread.SetApartmentState(ApartmentState.STA)
         thread.Start()
-        self.executors.append(thread)
-

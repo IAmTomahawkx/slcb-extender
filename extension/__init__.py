@@ -37,5 +37,5 @@ from .tree import *
 from .checks import *
 from .settings import Settings
 
-__version__ = "0.1.1"
-version_tuple = (0,1,0)
+__version__ = "0.2.0
+version_tuple = (0,2,0)

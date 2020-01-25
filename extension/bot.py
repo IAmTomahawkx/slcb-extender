@@ -522,8 +522,9 @@ class Bot(GroupMapping, BotBase):
     def get_random_viewer(self):
         return self.__parent.GetRandomActiveViewer()
     
-    def log(self, scriptname, data):
-        self.parent.Log(scriptname, str(data))
+    def log(self, *data):
+        for i in data:
+            self.parent.Log(self.__script_globals['ScriptName'], str(i))
     
     def play(self, fp, volume=100):
         self.__parent.PlaySound(fp, round(volume/100, 1))

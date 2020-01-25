@@ -334,7 +334,8 @@ class Bot(GroupMapping, BotBase):
         logger.exception(v)
 
     def on_error(self, exception):
-        raise
+        v = traceback.format_exc()
+        self.log(v)
 
     def on_message(self, data):
         self.dispatch_command(data)

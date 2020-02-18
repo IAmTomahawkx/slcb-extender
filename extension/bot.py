@@ -39,7 +39,8 @@ import collections
 import logging
 import json
 import datetime
-#import clr
+import time
+import clr
 
 __all__ = [
     "Bot"
@@ -49,13 +50,14 @@ scriptdir = os.path.dirname(os.path.dirname(__file__))
 reUserNotice = re.compile(r"(?:^(?:@(?P<irctags>[^\ ]*)\ )?:tmi\.twitch\.tv\ USERNOTICE)")
 logger = logging.getLogger(__name__)
 
-#clr.AddReference("System.Windows.Forms")
-#clr.AddReferenceByPartialName("PresentationFramework")
-#clr.AddReferenceByPartialName("PresentationCore")
-#clr.AddReferenceToFile('CefSharp.Wpf.dll')
-#clr.AddReference('System.Threading')
-#from System.Windows.Forms.MessageBox import Show
-#msg = lambda obj: Show(str(obj))
+
+# clr.AddReference("System.Windows.Forms")
+# clr.AddReferenceByPartialName("PresentationFramework")
+# clr.AddReferenceByPartialName("PresentationCore")
+# clr.AddReferenceToFile('CefSharp.Wpf.dll')
+# clr.AddReference('System.Threading')
+# from System.Windows.Forms.MessageBox import Show
+# msg = lambda obj: Show(str(obj))
 
 class Bot(GroupMapping, BotBase):
     def __init__(self, prefix="!", push_data_errors=True, settings=Settings, **kwargs):
@@ -64,8 +66,9 @@ class Bot(GroupMapping, BotBase):
         self.__commands = {}
         self.__trees = {}
         self.__listeners = []
-        self.__events = {"on_send_message": self._on_send_message, "on_command_error": self.on_command_error, "on_error":
-            self.on_error, "on_parse": self.parse, "on_message": self.on_message}
+        self.__events = {"on_send_message": self._on_send_message, "on_command_error": self.on_command_error,
+                         "on_error":
+                             self.on_error, "on_parse": self.parse, "on_message": self.on_message}
 
         self._push_platform_errors = push_data_errors
         self._parser = None
@@ -87,10 +90,10 @@ class Bot(GroupMapping, BotBase):
         self.running = True
         self.currency_name = ""
         self.random = random.WichmannHill()
-        self.stream = self.get_channel(Platforms.twitch) # this works, as all the streaming channels are the same.
+        self.stream = self.get_channel(Platforms.twitch)  # this works, as all the streaming channels are the same.
         self.discord = self.get_channel(Platforms.discord)
         self._live_dt = None
-        self._api = BrowserWindow(self)
+        self._api = API(self, time.time())
 
     def init(self):
         """
@@ -136,7 +139,7 @@ class Bot(GroupMapping, BotBase):
         """
         this will be injected into your script, and will become *ReloadSettings*.
         Use the on_reload_settings event to load things on initialization
-        
+
         Parameters
         -----------
         payload: the json string provided by the streamlabs chatbot.
@@ -176,7 +179,7 @@ class Bot(GroupMapping, BotBase):
                 self._platform = Platforms.mixer
             elif data.IsFromYoutube():
                 self._platform = Platforms.youtube
-        
+
         if data.IsChatMessage():
             self.dispatch("message", data)
 
@@ -190,7 +193,7 @@ class Bot(GroupMapping, BotBase):
                     displayName = tags['msg-param-displayName']
                     viewerCount = tags['msg-param-viewerCount']
                     self.dispatch("raid", displayName, viewerCount)
-    
+
     def _inject_to_globals(self, func):
         if "Init" in func.__globals__:
             return
@@ -204,11 +207,12 @@ class Bot(GroupMapping, BotBase):
     def listen(self, flag=None):
         """
         a decorator shortcut to :meth:`~add_listener`
-        
+
         Parameters
         -----------
         flag: the event to listen to. defaults to the function name
         """
+
         def deco(func):
             self._inject_to_globals(func)
             return self.add_listener(func)
@@ -219,7 +223,7 @@ class Bot(GroupMapping, BotBase):
         """
         adds an event listener to the bot.
         listeners act like events, but there can be unlimited amount of listeners.
-        
+
         Parameters
         -----------
         func: the function to use as a listener
@@ -236,11 +240,12 @@ class Bot(GroupMapping, BotBase):
     def event(self, flag=None):
         """
         a decorator to add an event flag internally
-        
+
         Parameters
         -----------
         flag: optional flag parameter. defaults to the function name.
         """
+
         def deco(func):
             self._inject_to_globals(func)
             _flag = flag
@@ -252,11 +257,39 @@ class Bot(GroupMapping, BotBase):
 
         return deco
 
+    def command(self, *args, **kwargs):
+        """A shortcut decorator that invokes :func:`.command` and adds it to
+        the internal command list via :meth:`~.GroupMapping.add_command`.
+        """
+
+        def decorator(func):
+            self._inject_to_globals(func)
+            kwargs.setdefault('parent', self)
+            result = command(*args, **kwargs)(func)
+            self.add_command(result)
+            return result
+
+        return decorator
+
+    def group(self, *args, **kwargs):
+        """A shortcut decorator that invokes :func:`.group` and adds it to
+        the internal command list via :meth:`~.GroupMapping.add_command`.
+        """
+
+        def decorator(func):
+            self._inject_to_globals(func)
+            kwargs.setdefault('parent', self)
+            result = group(*args, **kwargs)(func)
+            self.add_command(result)
+            return result
+
+        return decorator
+
     def get_event_caller(self, flag):
         """
         internal function to get the decorated event function
         """
-        return self.__events.get("on_"+flag)
+        return self.__events.get("on_" + flag)
 
     def _on_send_message(self, e, location=None, content=None, message=None, highlight=False, target=None):
         if target is not None and (location.id is Platforms.discord or location.id is Platforms.twitch):
@@ -287,7 +320,7 @@ class Bot(GroupMapping, BotBase):
             v(e)
 
     def _dispatch_event(self, flag, *args, **kwargs):
-        flag = "on_"+flag
+        flag = "on_" + flag
         logger.debug("dispatching event: " + flag)
         e = self.__events.get(flag, None)
         if e:
@@ -322,7 +355,7 @@ class Bot(GroupMapping, BotBase):
             v = ExceptionCaught("Command {0}".format(msg.command.qualified_name), e)
             h = self.get_event_caller("command_error")
             h(msg, v)
-    
+
     def get_message(self, data):
         chan = self.get_channel(self._platform if not data.IsFromDiscord() else Platforms.discord)
         msg = Message(self, data.User, data.UserName, data.Message, chan, data)
@@ -343,7 +376,7 @@ class Bot(GroupMapping, BotBase):
     def get_prefix(self, msg):
         """
         returns the given prefixes, and the invoked prefixes for a given message.
-        
+
         Parameters
         ------------
         msg: the :ref:`Message` object for the given message.
@@ -373,17 +406,17 @@ class Bot(GroupMapping, BotBase):
     def _schedule_message(self, content, delay, location, msg, highlight=False, target=None):
         """
         schedules a message to be sent at a later date. if the delay if 0, send it right away.
-        
+
         Parameters
         ------------
         content: the message to be sent
-        
+
         delay: the delay to when the message will be send
-        
+
         location: where to send the message
-        
+
         highlight: whether or not to prefix the message with **/me** . twitch only
-        
+
         target: the person to send the message, only used for dm messages.
         """
         event = Event(self, delay, "send_message", location=location, content=content, message=msg, highlight=highlight,
@@ -501,7 +534,7 @@ class Bot(GroupMapping, BotBase):
     @property
     def live(self):
         return self.__parent.IsLive()
-    
+
     @property
     def live_timer(self):
         if not self.live:
@@ -511,24 +544,24 @@ class Bot(GroupMapping, BotBase):
     @property
     def currencyname(self):
         return self.__parent.GetCurrencyName()
-    
+
     @property
     def viewers(self):
-        return [self.get_user(x) for x in self.__parent.GetViewerList()]
-    
+        return self.__parent.GetViewerList()  # type: list
+
     @property
     def active_viewers(self):
-        return [self.get_user(x) for x in self.__parent.GetActiveViewers()]
-    
+        return self.__parent.GetActiveViewers()
+
     def get_random_viewer(self):
         return self.__parent.GetRandomActiveViewer()
-    
+
     def log(self, *data):
-        for i in data:
-            self.parent.Log(self.__script_globals['ScriptName'], str(i))
-    
+        rp = " ".join([str(x) for x in data])
+        self.parent.Log(self.__script_globals['ScriptName'], rp)
+
     def play(self, fp, volume=100):
-        self.__parent.PlaySound(fp, round(volume/100, 1))
+        self.__parent.PlaySound(fp, round(volume / 100, 1))
 
     def get_channel(self, platform):
         if isinstance(platform, str):
@@ -552,12 +585,11 @@ class Bot(GroupMapping, BotBase):
 
     def api_post(self, target, headers=None, **kwargs):
         return json.loads(self.__parent.PostRequest(target, headers, dict(kwargs)))
-    
-    
+
     def mass_add_points(self, items):
         """
         add points to many people at once
-        
+
         Parameters
         -----------
         items: a list of tuples that contain the :func:`User` and the amount
@@ -569,7 +601,7 @@ class Bot(GroupMapping, BotBase):
     def mass_remove_points(self, items):
         """
         removes points from many people at once
-        
+
         Parameters
         -----------
         items: a list of tuples that contain the :func:`User` and the amount
@@ -580,15 +612,34 @@ class Bot(GroupMapping, BotBase):
                 failed.append(user)
         return failed
 
-class BrowserWindow:
-    def __init__(self, bot):
+    def purge_user(self, user):
+        self._api.purge(user)
+
+    def send_caster_message(self, msg):
+        self._api.send_msg_as_caster(msg)
+
+    def set_editor(self, user):
+        self._api.editor(user)
+
+    def set_vip(self, user, state):
+        if (self.parent.HasPermission(user.id, "VIP", "") and state) or \
+                (not self.parent.HasPermission(user.id, "VIP", "") and not state):
+            return False
+        return self._api.vip(user)
+
+
+class API:
+    def __init__(self, bot, startup):
         self.bot = bot
+        self.startup = startup
         self.ready = False
-        
+
     def Show(self):
         self.form.Show()
 
     def setup(self):
+        if time.time() - self.startup < 0:
+            raise ValueError()
         self.ready = True
         import System.Windows
         from CefSharp.Wpf import ChromiumWebBrowser
@@ -599,32 +650,48 @@ class BrowserWindow:
         self.form.Content = self.browser
 
     def runfunc(self, func):
-        if not self.ready:
-            def coro():
-                self.setup()
+        class State:
+            # we're just going to ducktype our way through this
+            ret = True
+        state = State()
+        def coro():
+            try:
+                if not self.ready:
+                    self.setup()
                 func()
-            self.run_efsharp_thread(coro)
-    
+            except Exception as e:
+                state.ret = traceback.format_exc()
+        return self.run_net_thread(coro, state)
+
     def send_msg_as_caster(self, msg):
-        self.runfunc(lambda: self.tcom.JSSendCommand(str(msg), ""))
+        return self.runfunc(lambda: self.tcom.JSSendCommand(str(msg), ""))
+
+    def vip(self, user, bot=None):
+        return self.runfunc(lambda: self.tcom.JSSendCommand("/vip " + user.id, ""))
 
     def purge(self, user):
-        self.runfunc(lambda: self.tcom.JSPurge(user.id))
-    
-    def editor(self, user):
-        self.runfunc(lambda: self.tcom.JSEditor(user.id))
-    
-    def regular(self, user):
-        self.runfunc(lambda: self.tcom.JSRegular(user.id))
-    
-    def ban(self, user):
-        self.runfunc(lambda: self.tcom.JSBan(user.id))
-    
-    def timeout(self, user):
-        self.runfunc(lambda: self.tcom.JSTimeout(user.id))
+        return self.runfunc(lambda: self.tcom.JSPurge(user.id))
 
-    def run_efsharp_thread(self, runner):
+    def editor(self, user):
+        return self.runfunc(lambda: self.tcom.JSEditor(user.id))
+
+    def regular(self, user):
+        return self.runfunc(lambda: self.tcom.JSRegular(user.id))
+
+    def ban(self, user):
+        return self.runfunc(lambda: self.tcom.JSBan(user.id))
+
+    def timeout(self, user):
+        return self.runfunc(lambda: self.tcom.JSTimeout(user.id))
+
+    def run_net_thread(self, coro, state, block=True):
         from System.Threading import Thread, ThreadStart, ApartmentState
-        thread = Thread(ThreadStart(runner))
+        thread = Thread(ThreadStart(coro))
         thread.SetApartmentState(ApartmentState.STA)
         thread.Start()
+        if block:
+            while thread.IsAlive:
+                pass
+            thread.Finalize()
+            return state.ret
+        return thread, state

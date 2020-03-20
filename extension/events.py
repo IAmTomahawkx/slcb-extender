@@ -25,14 +25,15 @@ DEALINGS IN THE SOFTWARE.
 
 Thanks to Ocgineer for his EventReciever.dll and boilerplate
 """
-import clr, os
+import clr
+import os
 clr.AddReferenceToFileAndPath(os.path.join(os.path.dirname(__file__), "bin", "StreamlabsEventReceiver.dll"))
 import StreamlabsEventReceiver
 import logging
 
 logger = logging.getLogger(__name__)
 
-class EventsNode(object):
+class EventsNode:
     def __init__(self, bot):
         self._bot = bot
 
@@ -41,22 +42,24 @@ class EventsNode(object):
         self.receiver.StreamlabsSocketConnected += self.on_event_connect
         self.receiver.StreamlabsSocketDisconnected += self.on_event_disconnect
         self.receiver.StreamlabsSocketEvent += self.on_event_receive
+        self._bot.log(self._bot.settings.StreamlabsEventToken)
         if self._bot.settings.StreamlabsEventToken:
-           self.receiver.Connect(self._bot.settings.StreamlabsEventToken)
+            self._bot.log("Connected with "+self._bot.settings.StreamlabsEventToken)
+            self.receiver.Connect(self._bot.settings.StreamlabsEventToken)
 
     def on_unload(self):
         if self.receiver and self.receiver.IsConnected:
             self.receiver.Disconnect()
             self.receiver = None
 
-    def on_reload_settings(self, settings):
-        if self.reciever.IsConnected:
+    def on_reload_settings(self):
+        if self.receiver.IsConnected:
             self.receiver.Disconnect()
 
         # Connect if token has been entered and EventReceiver is not connected
         # This can then connect without having to reload the script
-        if not self.receiver.IsConnected and settings.StreamlabsEventToken:
-            self.receiver.Connect(settings.StreamlabsEventToken)
+        if not self.receiver.IsConnected and self._bot.settings.StreamlabsEventToken:
+            self.receiver.Connect(self._bot.settings.StreamlabsEventToken)
 
     def on_event_connect(self, sender, args):
         logger.debug("Streamlabs event receiver connected.")
@@ -98,11 +101,11 @@ class EventsNode(object):
                         self._bot.dispatch("streak_sub", user, message.Months, message.StreakMonths)
                     elif message.Months > 1:  # Reliable way to to detect resub, as SubType is can vary with testing/real but also can contain subgift value
                         user = self._bot.get_user(message.Name)
-                        tier = int(message.SubPlan)/1000
+                        tier = message.SubPlan
                         self._bot.dispatch("resub", user, message.Months, tier)
                     else:
                         user = self._bot.get_user(message.Name)
-                        tier = int(message.SubPlan)/1000
+                        tier = message.SubPlan
                         self._bot.dispatch("sub", user, tier)
 
         elif evntdata and evntdata.For == "streamlabs":

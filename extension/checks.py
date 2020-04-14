@@ -23,7 +23,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 """
-from .errors import *
+from . import errors
 from .commands import Command
 from .abc import Platforms
 
@@ -48,10 +48,10 @@ class _Check:
     def __call__(self, msg):
         try:
             ret = self.callback(msg)
-        except CommandError:
+        except errors.CommandError:
             raise
         except Exception as e:
-            raise ExceptionCaught(e, "Check")
+            raise errors.ExceptionCaught(e, "Check")
         return ret
 
 def check(checker):
@@ -103,7 +103,7 @@ def discord_only():
     return check(lambda msg: msg.channel.id == Platforms.discord)
 
 def stream_only():
-    return check(lambda msg: msg.channel.id in Platforms.streaming_services)
+    return check(lambda msg: msg.channel.id in Platforms.stream_services)
 
 def settings_permission(permname):
     def predicate(msg):

@@ -1,8 +1,3 @@
-# -*- coding: utf-8 -*-
-
-"""
-Credits to rapptz (Danny) for the base of this package
-
 The MIT License (MIT)
 
 Copyright (c) 2019 IAmTomahawkx
@@ -24,26 +19,5 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
-"""
-from .bot import *
-from .commands import *
-from .cooldowns import *
-from .abc import *
-from .converters import *
-from .errors import *
-from .message import *
-from .view import *
-from .node import *
-from .checks import *
-from .settings import Settings
-import clr
-import os
 
-clr.AddReference("IronPython.Modules.dll")
-clr.AddReferenceToFileAndPath(os.path.join(os.path.dirname(__file__), "bin", "TwitchLib.PubSub.dll"))
-clr.AddReferenceToFileAndPath(os.path.join(os.path.dirname(__file__), "bin", "StreamlabsEventReceiver.dll"))
-
-del clr, os
-
-__version__ = "0.3.0"
-version_tuple = (0,3,0)
+please see the examples.py file for usage of this library

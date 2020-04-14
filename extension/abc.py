@@ -31,6 +31,8 @@ __all__ = [
     "Platforms",
     "Object",
     "RestOfInput",
+    "Optional",
+    "Union",
     "Event",
     "Channel",
     "User"
@@ -60,28 +62,52 @@ class Object:
 class BotBase(object):
     pass
 
-class RestOfInput(object):
-    def __init__(self, t=str):
-        self.type = t
+class _RestOfInput(object):
+    def __init__(self):
+        self.type = str
 
-class Optional(object):
-    def __init__(self, t=str):
-        self.type = t
+    def __getitem__(self, item):
+        ret = self.__class__()
+        ret.type = item
+        return ret
 
-class Union(object):
-    def __init__(self, *args):
-        self.options = args
+    __call__ = __getitem__
+
+RestOfInput = _RestOfInput()
+
+class _Optional(object):
+    def __init__(self):
+        self.type = str
+
+    def __getitem__(self, item):
+        ret = self.__class__()
+        ret.type = item
+        return ret
+
+Optional = _Optional()
+
+class _Union(object):
+    def __init__(self):
+        self.types = [str]
+
+    def __getitem__(self, *items):
+        ret = self.__class__()
+        ret.types = list(items)
+        return ret
+
+Union = _Union()
 
 class Event(object):
     """
     a container to hold scheduled :ref:`events` internally in the :ref:`bot`
-    this is not created manually.
+    Do not create these manually
     """
-    __slots__ = ["_fire_at", "_flag", "_bot", "_payload", "_did_fire"]
-    def __init__(self, bot, delay, flag, **payload):
+    __slots__ = ["_fire_at", "_flag", "_bot", "args", "kwargs", "_did_fire"]
+    def __init__(self, bot, delay, flag, *args, **kwargs):
         self._fire_at = time.time() + delay
         self._flag = flag
-        self._payload = payload
+        self.args = args
+        self.kwargs = kwargs
         self._bot = bot
         self._did_fire = False
     
@@ -100,7 +126,8 @@ class Event(object):
     def dispatch(self):
         if self._did_fire:
             raise EventAlreadyFired("the event with flag {} has already been fired".format(self.flag))
-        self._bot._dispatch_event(self._flag, self, **self._payload)
+
+        self._bot._inner_dispatch(self._flag, *self.args, **self.kwargs)
         self._did_fire = True
     
     @property
@@ -109,7 +136,7 @@ class Event(object):
     
     @property
     def payload(self):
-        return self._payload.copy()
+        return self.kwargs.copy()
         
  
 class Channel(object):
@@ -146,9 +173,6 @@ class User(object):
         self.permissions = []
         self._find_perms()
         self.highest_permission = self.permissions[0]
-    
-    def __str__(self):
-        return self.name
     
     @property
     def points(self):

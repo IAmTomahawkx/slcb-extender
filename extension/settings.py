@@ -28,6 +28,8 @@ import os, json, codecs
 searchpath = os.path.dirname(os.path.dirname(__file__))
 
 class Settings:
+    StreamlabsEventToken = None
+    TwitchApiUsername = None
     def __init__(self):
         self._root = None
         self._applied = None
@@ -36,22 +38,29 @@ class Settings:
                 with codecs.open(os.path.join(searchpath, f), encoding="utf-8") as e:
                     self._root = json.load(e)
                 break
+
         if self._root is None:
             return
+
         for f in os.listdir(searchpath):
             if f == self._root['output_file']:
                 with codecs.open(os.path.join(searchpath, f), encoding="utf-8-sig") as e:
                     self._applied = json.load(e, encoding="utf-8-sig")
                 break
+
         if self._applied is None:
             self._applied = {}
             # no settings exist, use the defaults
             for name, sets in self._root.items():
                 if name == "output_file" or sets['type']=="button": continue
                 self._applied[name] = sets['value']
+
         self.__dict__.update(self._applied)
         if not hasattr(self, "StreamlabsEventToken"):
             self.StreamlabsEventToken = None
+
+        if not hasattr(self, "TwitchApiUsername"):
+            self.TwitchApiUsername = None
 
     def reload(self, payload):
         self._applied = json.loads(payload)

@@ -35,7 +35,7 @@ __all__ = [
     "UserConverter"
 ]
 
-class Converter:
+class Converter(object):
     """
     base class for all converters.
     if you wish to make your own converter, it **must** subclass this.
@@ -97,4 +97,4 @@ class UserConverter(Converter):
             v = msg.bot.parent.GetDisplayName(param.lower())
             if not v:
                 raise ConverterError("Thats not a user!")
-            return bot.get_user(v)
+            return msg.bot.get_user(v)

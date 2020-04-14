@@ -25,9 +25,6 @@ DEALINGS IN THE SOFTWARE.
 
 Thanks to Ocgineer for his EventReciever.dll and boilerplate
 """
-import clr
-import os
-clr.AddReferenceToFileAndPath(os.path.join(os.path.dirname(__file__), "bin", "StreamlabsEventReceiver.dll"))
 import StreamlabsEventReceiver
 import logging
 
@@ -42,9 +39,7 @@ class EventsNode:
         self.receiver.StreamlabsSocketConnected += self.on_event_connect
         self.receiver.StreamlabsSocketDisconnected += self.on_event_disconnect
         self.receiver.StreamlabsSocketEvent += self.on_event_receive
-        self._bot.log(self._bot.settings.StreamlabsEventToken)
         if self._bot.settings.StreamlabsEventToken:
-            self._bot.log("Connected with "+self._bot.settings.StreamlabsEventToken)
             self.receiver.Connect(self._bot.settings.StreamlabsEventToken)
 
     def on_unload(self):

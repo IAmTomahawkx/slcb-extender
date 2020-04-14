@@ -24,24 +24,27 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 """
-import re
-import traceback
-import random
-import os
-from .errors import *
-from .abc import *
-from .abc import BotBase
-from .message import Message
-from .tree import *
-from .commands import *
-from .settings import Settings
-from .events import EventsNode
 import collections
 import logging
 import json
 import datetime
 import time
+import sys
 import clr
+import re
+import traceback
+import random
+import os
+
+from .errors import *
+from .abc import *
+from .abc import BotBase
+from .message import Message
+from .commands import *
+from .settings import Settings
+from .debugger import Debug
+from .node import Node
+
 
 __all__ = [
     "Bot"
@@ -51,29 +54,22 @@ scriptdir = os.path.dirname(os.path.dirname(__file__))
 reUserNotice = re.compile(r"(?:^(?:@(?P<irctags>[^\ ]*)\ )?:tmi\.twitch\.tv\ USERNOTICE)")
 logger = logging.getLogger(__name__)
 
-#clr.AddReference("System.Windows.Forms")
-#clr.AddReferenceByPartialName("PresentationFramework")
-#clr.AddReferenceByPartialName("PresentationCore")
-#clr.AddReferenceToFile('CefSharp.Wpf.dll')
-#clr.AddReference('System.Threading')
-#from System.Windows.Forms.MessageBox import Show
-#msg = lambda obj: Show(str(obj))
+clr.AddReferenceToFileAndPath(os.path.join(os.path.dirname(__file__), "bin", "StreamlabsEventReceiver.dll"))
+
+from .events import EventsNode
 
 class Bot(GroupMapping, BotBase):
-    def __init__(self, prefix="!", push_data_errors=True, settings=Settings, **kwargs):
+    def __init__(self, prefix="!", client_id=None, settings=Settings, **kwargs):
         self.__parent = None
         self.prefix = prefix
         self.__commands = {}
-        self.__trees = {}
-        self.__listeners = []
-        self.__events = {"on_send_message": self._on_send_message, "on_command_error": self.on_command_error, "on_error":
-            self.on_error, "on_parse": self.parse, "on_message": self.on_message}
+        self.__nodes = {}
+        self.__listeners = {"on_send_message": [self._on_send_message], "on_command_error": [self.on_command_error], "on_error":
+            [self.on_error], "on_parse": [self.parse], "on_message": [self.on_message]}
 
-        self._push_platform_errors = push_data_errors
         self._parser = None
         self.__script_globals = {}
         self._do_parameters = kwargs.get("do_parameters", True)
-        self.handle_errors = kwargs.get("handle_errors", True)
         self.settings = settings()
 
         # i dont know the platform until the first data event comes through
@@ -86,7 +82,6 @@ class Bot(GroupMapping, BotBase):
         # to the command.
         self._bot = self
 
-        self.running = True
         self.currency_name = ""
         self.random = random.WichmannHill()
         self.stream = self.get_channel(Platforms.twitch) # this works, as all the streaming channels are the same.
@@ -95,7 +90,35 @@ class Bot(GroupMapping, BotBase):
         self._api = BrowserWindow(self, time.time())
         self._events = EventsNode(self)
 
-    def init(self):
+        if kwargs.get("enable_debug", False):
+            self._debug = True
+            self.add_node(Debug(self))
+
+        else:
+            self._debug = False
+
+        self.client_id = client_id
+
+    @property
+    def parent(self):
+        """
+        returns the Parent object given by the bot
+        """
+        return self.__parent
+
+    @property
+    def platform(self):
+        """
+        gives the platform the bot is currently on. this will be an enum member of :ref:`~Platform`
+        :return:
+        """
+        return self._platform
+
+    @property
+    def nodes(self):
+        return self.__nodes
+
+    def __init(self):
         """
         this will be injected into your script, and will become *Init*.
         Use the on_init event to load things on initialization
@@ -107,37 +130,40 @@ class Bot(GroupMapping, BotBase):
         self._events.on_init()
         self.dispatch("init")
 
-    @property
-    def parent(self):
-        """
-        returns the Parent object given by the bot
-        """
-        return self.__parent
-
     def unload(self):
         """
-        this will be injected into your script, and will become *Unload*.
-        Use the on_unload event to load things on initialization
+        this will *not* be injected into your script, however it **must** be called from inside `Unload`!
         """
         self._events.on_unload()
         self.dispatch("unload")
 
-    def tick(self):
+    def __tick(self):
         """
-        this will be injected into your script, and will become *Tick*.
+        this will be injected into your script, and will become `Tick`.
         Use the on_tick event to load things on initialization
         """
         if self.live and self._live_dt is None:
             self._live_dt = datetime.datetime.now()
+
         if not self.live and self._live_dt is not None:
             self._live_dt = None
+
+        dispatched = 0
         for event in self._scheduled_events:
             if event.should_dispatch():
+                dispatched += 1
                 event.dispatch()
                 self._scheduled_events.remove(event)
+
+                if dispatched > 3:
+                    break
+
+            else:
+                self.debug("delaying event {0}".format(repr(event)))
+
         self.dispatch("tick")
 
-    def reload_settings(self, payload):
+    def __reload_settings(self, payload):
         """
         this will be injected into your script, and will become *ReloadSettings*.
         Use the on_reload_settings event to load things on initialization
@@ -151,9 +177,10 @@ class Bot(GroupMapping, BotBase):
         self._events.on_reload_settings()
         for i in self.__commands.values():
             i.namer(self)
+
         self.dispatch("reload_settings", formatted)
 
-    def execute(self, data):
+    def __execute(self, data):
         """
         this will be injected into your script, and will become *Execute*.
         Use the on_message event to load things on initialization
@@ -178,16 +205,22 @@ class Bot(GroupMapping, BotBase):
         if self._platform is None:
             if data.IsFromTwitch():
                 self._platform = Platforms.twitch
+
             elif data.IsFromMixer():
                 self._platform = Platforms.mixer
+
             elif data.IsFromYoutube():
                 self._platform = Platforms.youtube
         
         if data.IsChatMessage():
             self.dispatch("message", data)
+            return
+
+        else:
+            self.dispatch("raw_receive", data.RawData)
 
         if data.IsFromTwitch():
-            # the raid event. thanks to Kruiser8 for the regexes
+            # the raid event. thanks to Kruiser8 for the regex
             usernotice = reUserNotice.search(data.RawData)
             if usernotice:
                 tags = dict(re.findall(r"([^=]+)=([^;]*)(?:;|$)", usernotice.group("irctags")))
@@ -200,26 +233,14 @@ class Bot(GroupMapping, BotBase):
     def _inject_to_globals(self, func):
         if "Init" in func.__globals__:
             return
+
         self.__script_globals = func.__globals__
         globs = func.__globals__
-        globs['Init'] = self.init
-        globs['Execute'] = self.execute
-        globs['Tick'] = self.tick
-        globs['ReloadSettings'] = self.reload_settings
+        globs['Init'] = self.__init
+        globs['Execute'] = self.__execute
+        globs['Tick'] = self.__tick
+        globs['ReloadSettings'] = self.__reload_settings
 
-    def listen(self, flag=None):
-        """
-        a decorator shortcut to :meth:`~add_listener`
-        
-        Parameters
-        -----------
-        flag: the event to listen to. defaults to the function name
-        """
-        def deco(func):
-            self._inject_to_globals(func)
-            return self.add_listener(func)
-
-        return deco
 
     def add_listener(self, func, flag=None):
         """
@@ -233,30 +254,27 @@ class Bot(GroupMapping, BotBase):
         """
         if not flag:
             flag = func.__name__
-        if flag == "on_command_error" or flag == "on_error":
-            raise BotException("cannot add listeners to 'command_error' and 'error' events")
-        func.__flag = flag
-        self.__listeners.append(func)
+
+        if flag in self.__listeners:
+            self.__listeners[flag].append(func)
+        else:
+            self.__listeners[flag] = [func]
+
         return func
 
-    def event(self, flag=None):
+    def listen(self, flag=None):
         """
-        a decorator to add an event flag internally
-        
-        Parameters
-        -----------
-        flag: optional flag parameter. defaults to the function name.
+        decorator to add a listener to an event
+        :param flag: Optional[str] the event to listen to. defaults to the function name
+        :return: Function
         """
-        def deco(func):
+
+        def inner(func):
             self._inject_to_globals(func)
-            _flag = flag
-            if not _flag:
-                _flag = func.__name__
-            self.__events[_flag] = func
-            func.__flag = _flag
+            self.add_listener(func, flag or func.__name__)
             return func
 
-        return deco
+        return inner
 
     def command(self, *args, **kwargs):
         """A shortcut decorator that invokes :func:`.command` and adds it to
@@ -286,89 +304,77 @@ class Bot(GroupMapping, BotBase):
 
         return decorator
 
-    def get_event_caller(self, flag):
-        """
-        internal function to get the decorated event function
-        """
-        return self.__events.get("on_"+flag)
-
     def _on_send_message(self, e, location=None, content=None, message=None, highlight=False, target=None):
         if target is not None and (location.id is Platforms.discord or location.id is Platforms.twitch):
             self._dm_parse_and_send(target, content, message, True)
             return
+
         self._parse_and_send(location, content, message, highlight=highlight)
 
-    def schedule_event(self, flag, delay=0.0, **data):
+    def schedule_event(self, flag, delay=0.0, *args, **data):
         """
         internal function to schedule events to be delayed until a later time
         """
-        event = Event(self, delay, flag, **data)
-        if delay < 1:
-            # dispatch the event now, instead of adding it to a queue
-            return event.dispatch()
+        event = Event(self, delay, flag, *args, **data)
         self._scheduled_events.append(event)
 
     def dispatch(self, flag, *args, **kwargs):
         """
-        internal function to dispatch event listener
+        internal function to dispatch events and listeners
         """
-        try:
-            self._dispatch_event(flag, *args, **kwargs)
-        except Exception as e:
-            v = self.get_event_caller("error")
-            if not v:
-                return
-            v(e)
+        if flag == "tick":
+            self._inner_dispatch(flag, *args, **kwargs) # delaying tick dont work so well...
 
-    def _dispatch_event(self, flag, *args, **kwargs):
+        else:
+            #self.debug("scheduling event on_" + flag)
+            if kwargs.get("delay"):
+                del kwargs['delay']
+
+            self.schedule_event(flag, 0, *args, **kwargs)
+
+    def _inner_dispatch(self, flag, *args, **kwargs):
         flag = "on_"+flag
-        logger.debug("dispatching event: " + flag)
-        e = self.__events.get(flag, None)
-        if e:
-            self._actual_dispatch(e, *args, **kwargs)
-        for tree in self.__trees:
-            tree._dispatch_listeners(flag, *args, **kwargs)
-        for listener in self.__listeners:
-            if listener.__flag == flag:
+        if flag != "on_tick":
+            #self.debug("dispatching event: " + flag)
+            pass
+
+        if flag in self.__listeners:
+            for listener in self.__listeners[flag]:
                 self._actual_dispatch(listener, *args, **kwargs)
+
+        for node in self.__nodes.values():
+            for listener in node._listeners:
+                if listener.__flag == flag:
+                    listener(*args, **kwargs)
 
     def _actual_dispatch(self, func, *args, **kwargs):
         try:
             func(*args, **kwargs)
         except Exception as e:
-            ignore_me = self.__events.get("on_error")
-            ignore_me(e)  # this is the error handler dispatch. this line is not part of your problem
-        # if the handler raises an exception, the above line can be seen in the traceback.
-        # so we need to make it really clear that this line is not part of the problem.
-        # or else i get yelled at that i made a mistake :(
+            self._inner_dispatch("error", e, sys.exc_info()[2]) # give the traceback here, in case there's another error before the handler is called
 
     def dispatch_command(self, data):
         msg = self.get_message(data)
-        try:
-            if not msg.invoked_prefix or msg.command is None:
-                # not our prefix, ignore this message.
-                return
-            msg.command.dispatch(msg)
-        except CommandError as e:
-            h = self.get_event_caller("command_error")
-            h(msg, e)
-        except Exception as e:
-            v = ExceptionCaught("Command {0}".format(msg.command.qualified_name), e)
-            h = self.get_event_caller("command_error")
-            h(msg, v)
+
+        if not msg.valid:
+            return
+
+        msg.command.dispatch(msg)
     
     def get_message(self, data):
         chan = self.get_channel(self._platform if not data.IsFromDiscord() else Platforms.discord)
         msg = Message(self, data.User, data.UserName, data.Message, chan, data)
         return msg
 
-    def on_command_error(self, msg, exception):
+    def on_command_error(self, msg, exception, tb):
         msg.reply("error! " + exception.message)
-        v = traceback.format_exc()
-        logger.exception(v)
+        v = traceback.format_exception(type(exception), exception, tb)
+        v = "".join(v)
+        logger.error(v)
+        self.log(v)
 
-    def on_error(self, exception):
-        v = traceback.format_exc()
+    def on_error(self, error, tb):
+        v = traceback.format_exception(type(error), error, tb)
         self.log(v)
 
     def on_message(self, data):
@@ -402,7 +408,7 @@ class Bot(GroupMapping, BotBase):
             if msg.content.startswith(prefix):
                 invoked = prefix
                 break
-        return ret, invoked
+        return invoked
 
     def _schedule_message(self, content, delay, location, msg, highlight=False, target=None):
         """
@@ -426,6 +432,7 @@ class Bot(GroupMapping, BotBase):
             # do not schedule the event, just run it.
             event.dispatch()
             return
+
         self._scheduled_events.append(event)
 
     def parse(self, msg, content):
@@ -444,31 +451,22 @@ class Bot(GroupMapping, BotBase):
         try:
             parsed_message = self.parse(message, content)
         except Exception as e:
-            ignore_me = self.__events.get("error")
-            ignore_me(e)  # this is the error handler dispatch. this line is not part of your problem
-            # if the handler raises an exception, the above line can be seen in the traceback.
-            # so we need to make it really clear that this line is not part of the problem.
-            # or else i get yelled at that i made a mistake :(
+            self.dispatch("error", e, sys.exc_info()[2])
 
             parsed_message = content
-        self._send(channel, parsed_message)
+        self._send(channel, parsed_message, highlight=highlight)
 
     def _dm_parse_and_send(self, user, content, msg, discord=False):
         if not discord and self._platform != Platforms.twitch:
             logger.warning("attempted to whisper on platform %s" % Platforms.sources[self._platform])
-            if self._push_platform_errors:
-                raise CannotWhisperOnPlatform
+            raise CannotWhisperOnPlatform
         try:
             processed = self.parse(msg, content)
         except Exception as e:
-            ignore_me = self.__events.get("error")
-            ignore_me(e)  # this is the error handler dispatch. this line is not part of your problem
-            # if the handler raises an exception, the above line can be seen in the traceback.
-            # so we need to make it really clear that this line is not part of the problem.
-            # or else i get yelled at that i made a mistake :(
+            self.dispatch("error", e, sys.exc_info()[2])
             processed = content
-        if discord:
 
+        if discord:
             self.__parent.SendDiscordDM(user, processed)
         else:
             self.__parent.SendStreamWhisper(user, processed)
@@ -480,8 +478,10 @@ class Bot(GroupMapping, BotBase):
         """
         if self._platform is Platforms.twitch and highlight:
             content = "/me " + content
+
         if channel.id in Platforms.stream_services:
             self.__parent.SendStreamMessage(content)
+
         elif channel.id == Platforms.discord:
             self.__parent.SendDiscordMessage(content)
 
@@ -493,35 +493,39 @@ class Bot(GroupMapping, BotBase):
         self.__commands[command.name] = command
         # do not add aliases to __commands.
 
-    def add_tree(self, tree):
+    def add_node(self, node):
         """
         wip, do not invoke this
         """
-        if not isinstance(tree, Tree):
-            raise TypeError("tree must be a subclass of chatbot.Tree, not " + tree.__class__.__name__)
-        tree._attach(self)
-        for name in tree.all_commands:
+        if not isinstance(node, Node):
+            raise TypeError("node must be a subclass of extension.Node, not " + node.__class__.__name__)
+
+        node._attach(self)
+        for name in node.all_commands:
             if name in self.all_commands:
                 raise CommandExists("the command '{}' already exists".format(name))
-        self.all_commands.update(tree.all_commands)
-        self.__trees[tree.name] = tree
 
-    def get_tree(self, tree_name):
+        self.all_commands.update(node.all_commands)
+        self.__nodes[node.name] = node
+
+    def get_node(self, node):
         """
         wip, do not invoke this
         """
-        return self.__trees.get(tree_name)
+        return self.__nodes.get(node)
 
-    def remove_tree(self, tree_name):
+    def remove_node(self, node):
         """
         wip, do not invoke this
         """
-        tree = self.__trees.get(tree_name)
+        tree = self.__nodes.pop(node, None)
         if not tree:
-            raise TreeNotFound("the tree '{}' was not found".format(tree_name))
+            raise TreeNotFound("the node '{}' was not found".format(node))
+
         for name in tree.commands:
             if name in self.commands:
                 self.remove_command(name)
+
         tree._detach()
 
     # ===============
@@ -560,6 +564,12 @@ class Bot(GroupMapping, BotBase):
     def log(self, *data):
         rp = " ".join([str(x) for x in data])
         self.parent.Log(self.__script_globals['ScriptName'], rp)
+
+    def debug(self, *data):
+        if not self._debug:
+            return
+
+        self.log(*data)
     
     def play(self, fp, volume=100):
         self.__parent.PlaySound(fp, round(volume/100, 1))
@@ -585,7 +595,7 @@ class Bot(GroupMapping, BotBase):
         return ret
 
     def api_post(self, target, headers=None, **kwargs):
-        return json.loads(self.__parent.PostRequest(target, headers, dict(kwargs)))
+        return json.loads(self.__parent.PostRequest(target, headers or {}, dict(kwargs)))
     
     def mass_add_points(self, items):
         """

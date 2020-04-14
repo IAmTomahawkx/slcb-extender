@@ -31,6 +31,7 @@ __all__ = [
     "ExpectedClosingQuoteError",
     "CannotWhisperOnPlatform",
     "BadArgument",
+    "BadUnionArgument",
     "ConversionError",
     "ConverterError",
     "ArgumentParsingError",
@@ -93,6 +94,11 @@ class ConversionError(ConverterError):
 
 class BadArgument(UserInputError):
     pass
+
+class BadUnionArgument(BadArgument):
+    def __init__(self, union, msg=""):
+        self.union = union
+        BadArgument.__init__(self, msg)
 
 class ArgumentParsingError(BadArgument):
     pass

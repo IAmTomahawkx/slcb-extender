@@ -183,6 +183,12 @@ class User(object):
     @property
     def rank(self):
         return self._rank
+    
+    def __eq__(self, other):
+        if not isinstance(other, User):
+            return False
+
+        return other.id == self.id
 
     def _find_perms(self):
         parent = self.__bot.parent

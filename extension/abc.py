@@ -169,7 +169,7 @@ class User(object):
     def __init__(self, id, name, **kwargs):
         self.__bot = kwargs.pop("bot", None)
         self.name = name
-        self.id = id
+        self.id = id.lower() # just to make sure
         self.permissions = []
         self._find_perms()
         self.highest_permission = self.permissions[0]
@@ -183,7 +183,7 @@ class User(object):
     @property
     def rank(self):
         return self._rank
-    
+
     def __eq__(self, other):
         if not isinstance(other, User):
             return False

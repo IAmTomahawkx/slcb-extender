@@ -82,7 +82,6 @@ class Bot(GroupMapping, BotBase):
         # to the command.
         self._bot = self
 
-        self.currency_name = ""
         self.random = random.WichmannHill()
         self.stream = self.get_channel(Platforms.twitch) # this works, as all the streaming channels are the same.
         self.discord = self.get_channel(Platforms.discord)
@@ -230,22 +229,27 @@ class Bot(GroupMapping, BotBase):
                     viewerCount = tags['msg-param-viewerCount']
                     self.dispatch("raid", displayName, viewerCount)
     
-    def _inject_to_globals(self, func):
-        if "Init" in func.__globals__:
+    def _inject_to_globals(self, func=None, globals=None):
+        if globals is None and func is None:
+            raise ValueError("need either func or globals")
+
+        if func and not globals:
+            globals = func.__globals__
+
+        if "Init" in globals:
             return
 
-        self.__script_globals = func.__globals__
-        globs = func.__globals__
-        globs['Init'] = self.__init
-        globs['Execute'] = self.__execute
-        globs['Tick'] = self.__tick
-        globs['ReloadSettings'] = self.__reload_settings
+        self.__script_globals = globals
+        globals['Init'] = self.__init
+        globals['Execute'] = self.__execute
+        globals['Tick'] = self.__tick
+        globals['ReloadSettings'] = self.__reload_settings
 
 
     def add_listener(self, func, flag=None):
         """
         adds an event listener to the bot.
-        listeners act like events, but there can be unlimited amount of listeners.
+        listeners will fire when certain events happen, such as a message, which will trigger the on_message event
         
         Parameters
         -----------
@@ -255,12 +259,20 @@ class Bot(GroupMapping, BotBase):
         if not flag:
             flag = func.__name__
 
+        func.__listen_to__ = flag
+
         if flag in self.__listeners:
             self.__listeners[flag].append(func)
         else:
             self.__listeners[flag] = [func]
 
         return func
+
+    def remove_listener(self, func):
+        if not hasattr(func, "__listen_to__"):
+            raise ValueError("function is not a listener")
+
+        self.__listeners[func.__listen_to__].remove(func)
 
     def listen(self, flag=None):
         """
@@ -374,11 +386,14 @@ class Bot(GroupMapping, BotBase):
         self.log(v)
 
     def on_error(self, error, tb):
-        v = traceback.format_exception(type(error), error, tb)
+        v = "".join(traceback.format_exception(type(error), error, tb))
         self.log(v)
 
     def on_message(self, data):
         self.dispatch_command(data)
+
+    def on_tick(self):
+        pass
 
     def get_prefix(self, msg):
         """
@@ -559,7 +574,7 @@ class Bot(GroupMapping, BotBase):
         return self.__parent.GetActiveViewers()
     
     def get_random_viewer(self):
-        return self.__parent.GetRandomActiveViewer()
+        return self.__parent.GetRandomActiveUser()
     
     def log(self, *data):
         rp = " ".join([str(x) for x in data])

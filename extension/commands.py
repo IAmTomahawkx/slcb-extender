@@ -430,12 +430,6 @@ class Command(_Base):
             elif isinstance(converter, str) or converter is str:
                 return converters.StrConverter()
 
-            elif isinstance(converter, type(Optional)):
-                try:
-                    return self._get_converter(converter.type)
-                except ConverterError:
-                    return converter.type
-
             raise ConverterError(
                 repr(param) + " is not a subclass of chatbot.Converter")
 
@@ -451,11 +445,11 @@ class Command(_Base):
             return converter.convert(msg, argument, slot)
 
         except CommandError as e:
-            raise ConversionError(None, converter, e)
+            raise ConversionError(e.message, converter, e)
 
         except Exception as exc:
             raise ConversionError('Converting to "{}" failed for parameter "{}".'.format(
-                    converter.__name__, wantedtype), converter, exc)
+                    type(converter).__name__, wantedtype), converter, exc)
 
     def do_parameters(self, msg, transform):
         msg.args = args = [msg] if not self.node else [self.node, msg]
@@ -488,6 +482,7 @@ class Command(_Base):
                 except:
                     msg.view.undo()
                     kwargs[name] = None
+                    continue
 
             if type(wanted_type) is type(Union):
                 transformed = None

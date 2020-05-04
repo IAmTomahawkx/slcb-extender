@@ -93,6 +93,7 @@ class BoolConverter(Converter):
 class UserConverter(Converter):
     def convert(self, msg, param, index):
         # for now, im assuming we are using twitch. i need to figure out how to get a userid from a username
+        param = param.strip("@").lower()
         if msg.bot.platform == abc.Platforms.twitch:
             v = msg.bot.parent.GetDisplayName(param.lower())
             if not v:

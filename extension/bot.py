@@ -571,7 +571,7 @@ class Bot(GroupMapping, BotBase):
     
     @property
     def active_viewers(self):
-        return self.__parent.GetActiveViewers()
+        return self.__parent.GetActiveUsers()
     
     def get_random_viewer(self):
         return self.__parent.GetRandomActiveUser()
